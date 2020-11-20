@@ -1,0 +1,99 @@
+---
+title: "Practical machine learning project"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data import
+
+```{r}
+data <- function(url, nastrings) {
+    temp <- tempfile()
+    download.file(url, temp, method = "curl")
+    data <- read.csv(temp, na.strings = nastrings)
+    unlink(temp)
+    return(data)
+}
+
+trainurl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+train <- data(trainurl, c("", "NA", "#DIV/0!"))
+
+testurl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+test <- data(testurl, c("", "NA", "#DIV/0!"))
+dim(train); table(train$classe)
+```
+
+As a result, the training data have 19,622 observations and 160 variables, with the frequency of 5 measured stances A, B, C, D, and E of 5,580, 3,797, 3,216, and 3,607, respectively.
+
+## Data processiing
+
+```{r caret}
+library(caret)
+set.seed(123456)
+trainset <- createDataPartition(train$classe, p = 0.8, list = FALSE)
+Training <- train[trainset, ]
+Validation <- train[-trainset, ]
+
+nzvcol <- nearZeroVar(Training)
+Training <- Training[, -nzvcol]
+
+cntlength <- sapply(Training, function(x) {
+    sum(!(is.na(x) | x == ""))
+})
+nullcol <- names(cntlength[cntlength < 0.6 * length(Training$classe)])
+descriptcol <- c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", 
+    "cvtd_timestamp", "new_window", "num_window")
+excludecols <- c(descriptcol, nullcol)
+Training <- Training[, !names(Training) %in% excludecols]
+```
+
+## Model training
+
+```{r randomForest}
+library(randomForest)
+rfModel <- randomForest(as.factor(classe) ~ ., data = Training, importance = TRUE, ntrees = 10)
+```
+
+## Model validation
+
+### Accuracy of training set
+
+```{r e1071}
+library(e1071)
+ptraining <- predict(rfModel, Training)
+
+print(confusionMatrix(ptraining, as.factor(Training$classe)))
+```
+
+### Accuracy of validation set
+
+```{r}
+pvalidation <- predict(rfModel, Validation)
+print(confusionMatrix(pvalidation, as.factor(Validation$classe)))
+```
+
+## Model prediction
+
+```{r}
+ptest <- predict(rfModel, test)
+ptest
+```
+
+```{r}
+results <- as.vector(ptest)
+
+pml_write_files = function(x) {
+    n = length(x)
+    for (i in 1:n) {
+        filename = paste0("problem_id_", i, ".txt")
+        write.table(x[i], file = filename, quote = FALSE, row.names = FALSE, 
+            col.names = FALSE)
+    }
+}
+
+pml_write_files(results)
+```
+
